@@ -15,9 +15,9 @@ This project implements an **Agentic RAG** system that prioritizes **accuracy, t
 ![Agent Graph](assets/agent_graph.png)
 
 #### 1. **Hybrid Search (BM25 + Semantic Vector)**
-*   **The Problem:** Standard vector search struggles with exact product IDs (e.g., "Art.-Nr. 4550242") because embedding models treat numbers abstractly. Keyword search (BM25) is great for IDs but fails at "needles for deep injections."
-*   **The Solution:** I implemented a **Hybrid Retriever**. It runs both BM25 (keyword) and Vector (semantic) searches in parallel, deduplicates results, and re-ranks them.
-*   **The Result:** Users can search by exact catalog number *or* vague natural language descriptions with equal success.
+*   **The Problem:** My first approach used **pure vector (semantic) search only**. It worked well for natural language queries like "needles for deep injections," but I quickly discovered it had a hard time reliably finding products by their exact ID (e.g., "Art.-Nr. 4550242"). Embedding models treat numbers abstractly, so exact catalog numbers were often missed or matched incorrectly.
+*   **The Solution:** To fix this, I added **BM25 keyword search** alongside the existing vector search, creating a **Hybrid Retriever**. It runs both BM25 (keyword) and Vector (semantic) searches in parallel, deduplicates results, and re-ranks them. BM25 excels at exact token matching (perfect for product IDs), while vector search handles semantic meaning.
+*   **The Result:** Users can now search by exact catalog number *or* vague natural language descriptions with equal success, something neither approach could achieve alone.
 
 #### 2. **"Table-First" Ingestion Strategy**
 *   **The Problem:** RAG pipelines often blindly chunk text, breaking tables mid-row or losing the column headers. In a medical catalog, a number like "0.45" is meaningless without its column header ("Diameter (mm)").
@@ -49,6 +49,20 @@ This project implements an **Agentic RAG** system that prioritizes **accuracy, t
 *   **PDF Processing:** `PyMuPDF` -> *Chosen for superior table extraction capabilities compared to pypdf.*
 *   **Backend:** FastAPI -> *High-performance, async Python API.*
 *   **Frontend:** Next.js (React) -> *Modern, responsive chat interface.*
+
+---
+
+## Trade-Offs & Future Improvements
+
+This is a prototype, I focused on the core retrieval loop first. Here's what I consciously scoped out and what I'd tackle next:
+
+| Decision | Why | Next Step |
+|---|---|---|
+| **No chat history** | Prioritized single-turn retrieval precision first; adding memory before the search pipeline was solid would have added complexity without value. | Add conversational memory via LangGraph checkpointers or an external store. |
+| **Local ChromaDB** | Zero-infrastructure setup, anyone can clone and run in minutes, no cloud accounts needed. Swapping the store is a one-file change (`ingestion.py`). | Move to a hosted vector DB (Pinecone, Weaviate, etc.) for scalability. |
+| **No disambiguation** | If a user asks "show me needles," the system retrieves a mix instead of asking for clarification. | Add a **Clarification Node** that detects diverse results and asks follow-up questions. |
+| **Blind query rewriting** | When retrieval grading fails, the rewriter guesses a new query without knowing *why* it failed. | Pass **Grader Feedback** to the Rewriter so it can exclude irrelevant terms explicitly. |
+| **No structured filtering** | Semantic search struggles with hard constraints like "shorter than 20mm." | Route specification queries to a **Structured Tool** that generates filters (e.g., `WHERE length < 20`). |
 
 ---
 
@@ -117,21 +131,3 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to start chatting.
-
----
-
-## Future Ideas & Architectural Improvements
-
-Since this is a prototype, I focused on the core self-correcting retrieval loop. However, for a production-ready system, I have identified several logic gaps and architectural improvements to handle complex edge cases:
-
-1.  **Solving "Ambiguity" (The Consultant Approach)**
-    *   **Current Limit:** If a user asks "show me needles", the system retrieves a random mix and tries to summarize them.
-    *   **Idea:** Add a **Clarification Node**. If retrieval yields diverse results (e.g., both "Safety" and "Spinal" needles), the agent should not guess. Instead, it should ask: *"Which type of needle are you looking for?"*
-
-2.  **Feedback-Driven Query Rewriting**
-    *   **Current Limit:** When the `grade_documents` node rejects results, the `rewrite_query` node guesses a new query blindly, unaware of *why* the search failed.
-    *   **Idea:** Pass **Grader Feedback** to the Rewriter. If the Grader rejected "Safety Syringes" because the user wanted "Standard", the Rewriter should explicitly exclude "Safety" in the next attempt.
-
-3.  **Structured Data Handling (SQL/Tool Use)**
-    *   **Current Limit:** Semantic search struggles with hard constraints like "shorter than 20mm".
-    *   **Idea:** Specific queries should route to a **Structured Tool**. For specification inputs, the agent would generate a filter (e.g., `WHERE length < 20`) rather than relying on vector similarity.

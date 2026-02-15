@@ -9,8 +9,8 @@ export interface Message {
 }
 
 export const SUGGESTED_QUESTIONS = [
-  "What syringes are available?",
-  "Show infusion products",
-  "What needle sizes do you offer?",
-  "Tell me about safety products",
+  "What sizes are available for Medibox?",
+  "Compare Sterican and Sterican Safety needles",
+  "Look up product with Art.-Nr. 4617022V",
+  "What are the Omnican Fine pen needle specifications?",
 ];
