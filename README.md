@@ -38,6 +38,15 @@ This project implements an **Agentic RAG** system that prioritizes **accuracy, t
 *   **The Problem:** Using an expensive RAG chain for "Hi" or "What is the weather?" is wasteful and confusing.
 *   **The Solution:** A specialized **Router** classifies intent immediately. Casual conversation bypasses the heavy RAG machinery entirely, ensuring instant, cost-effective responses for non-query interactions.
 
+### Transparent, Real-Time Frontend
+
+This project surfaces the agent's reasoning live so users can see *what* is happening and *why* they should trust the answer.
+
+*   **Live Agent Steps (SSE):** The backend streams status events as the agent moves through each node. The frontend shows animated spinners for the active step and checkmarks for completed ones, no blank-screen waiting.
+*   **Source Cards & Full-Text Modal:** Every answer includes clickable cards showing page number, content type (`text`/`table`), and match method (`Exact Match` via BM25 or `Semantic`). Clicking a card opens a modal with the raw source chunk so users can verify claims directly.
+*   **Inline Source Citations:** The LLM's response embeds citation badges (e.g., `[p.12]`) that link back to the corresponding source card for instant traceability.
+*   **Query Rewrite Transparency:** When the Grader triggers a rewrite, the reformulated query appears in a "Interpreted as" banner so users see exactly how their question was refined.
+
 ---
 
 ## Tech Stack
