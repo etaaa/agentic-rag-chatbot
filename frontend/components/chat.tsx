@@ -257,8 +257,8 @@ function Markdown({ content, onSourceClick }: { content: string, onSourceClick?:
 function TypingIndicator({ statusSteps }: { statusSteps: string[] }) {
   return (
     <div className="flex gap-3 max-w-3xl">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-        <Bot className="h-4.5 w-4.5 text-primary" />
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-hidden">
+        <img src="/sanovio-logo.png" alt="SANOVIO" className="h-full w-full object-cover" />
       </div>
       <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-3">
         {statusSteps.length === 0 ? (
@@ -414,11 +414,11 @@ export function Chat() {
     <div className="flex h-screen w-full flex-col bg-background">
       {/* Header */}
       <header className="flex items-center gap-3 border-b px-6 py-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-          <Bot className="h-5 w-5 text-primary" />
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-primary/10">
+          <img src="/sanovio-logo.png" alt="SANOVIO Logo" className="h-full w-full object-cover" />
         </div>
         <div>
-          <h1 className="text-sm font-semibold">Sanovio Assistant</h1>
+          <h1 className="text-sm font-semibold">SANOVIO Assistant</h1>
           <p className="text-xs text-muted-foreground">
             B. Braun product catalog
           </p>
@@ -431,11 +431,11 @@ export function Chat() {
           {messages.length === 0 ? (
             /* Welcome Screen */
             <div className="flex min-h-[calc(100vh-10.5rem)] flex-col items-center justify-center text-center px-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mb-6">
-                <Sparkles className="h-8 w-8 text-primary" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl overflow-hidden mb-6">
+                <img src="/sanovio-logo.png" alt="SANOVIO Logo" className="h-full w-full object-cover" />
               </div>
               <h2 className="text-xl font-semibold mb-2">
-                Welcome to Sanovio Assistant
+                Welcome to SANOVIO Assistant
               </h2>
               <p className="text-sm text-muted-foreground max-w-md mb-8">
                 Ask me anything about the B. Braun medical product catalog.
@@ -463,13 +463,13 @@ export function Chat() {
                 >
                   {/* Avatar */}
                   <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${msg.role === "assistant"
-                      ? "bg-primary/10"
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-hidden ${msg.role === "assistant"
+                      ? "bg-transparent"
                       : "bg-foreground/10"
                       }`}
                   >
                     {msg.role === "assistant" ? (
-                      <Bot className="h-4.5 w-4.5 text-primary" />
+                      <img src="/sanovio-logo.png" alt="SANOVIO" className="h-full w-full object-cover" />
                     ) : (
                       <User className="h-4.5 w-4.5 text-foreground/70" />
                     )}
@@ -553,7 +553,7 @@ export function Chat() {
             </Button>
           </form>
           <p className="mt-2 text-center text-[11px] text-muted-foreground/60">
-            Sanovio may produce inaccurate information. Verify important details.
+            SANOVIO may produce inaccurate information. Verify important details.
           </p>
         </div>
       </div>
