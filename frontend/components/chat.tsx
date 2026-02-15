@@ -1,0 +1,364 @@
+"use client";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Send,
+  Bot,
+  User,
+  FileText,
+  Table,
+  Sparkles,
+} from "lucide-react";
+import { sendMessage, type Source } from "@/lib/api";
+
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+  sources?: Source[];
+}
+
+const SUGGESTED_QUESTIONS = [
+  "What syringes are available?",
+  "Show infusion products",
+  "What needle sizes do you offer?",
+  "Tell me about safety products",
+];
+
+function SourceCards({ sources }: { sources: Source[] }) {
+  if (sources.length === 0) return null;
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {sources.map((source, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs transition-colors hover:bg-muted/50"
+        >
+          {source.content_type === "table" ? (
+            <Table className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+          <span className="font-medium">Page {source.page}</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+            {source.content_type}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Markdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+        strong: ({ children }) => (
+          <strong className="font-semibold">{children}</strong>
+        ),
+        ul: ({ children }) => (
+          <ul className="mb-2 ml-4 list-disc space-y-1 last:mb-0">
+            {children}
+          </ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="mb-2 ml-4 list-decimal space-y-1 last:mb-0">
+            {children}
+          </ol>
+        ),
+        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        h1: ({ children }) => (
+          <h1 className="mb-2 text-lg font-bold">{children}</h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="mb-2 text-base font-bold">{children}</h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="mb-1 text-sm font-bold">{children}</h3>
+        ),
+        code: ({ children, className }) => {
+          const isBlock = className?.includes("language-");
+          if (isBlock) {
+            return (
+              <pre className="mb-2 overflow-x-auto rounded-md bg-background/50 p-3 text-xs last:mb-0">
+                <code>{children}</code>
+              </pre>
+            );
+          }
+          return (
+            <code className="rounded bg-background/50 px-1 py-0.5 text-xs">
+              {children}
+            </code>
+          );
+        },
+        pre: ({ children }) => <>{children}</>,
+        table: ({ children }) => (
+          <div className="mb-2 overflow-x-auto last:mb-0">
+            <table className="w-full text-xs border-collapse">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => (
+          <thead className="bg-background/50">{children}</thead>
+        ),
+        th: ({ children }) => (
+          <th className="border border-border/50 px-2 py-1 text-left font-semibold">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => (
+          <td className="border border-border/50 px-2 py-1">{children}</td>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="mb-2 border-l-2 border-primary/30 pl-3 italic text-muted-foreground last:mb-0">
+            {children}
+          </blockquote>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex gap-3 max-w-3xl">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+        <Bot className="h-4.5 w-4.5 text-primary" />
+      </div>
+      <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-3">
+        <div className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
+          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
+          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function Chat() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string>();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollRef.current) {
+      const viewport = scrollRef.current.querySelector(
+        "[data-radix-scroll-area-viewport]"
+      );
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading, scrollToBottom]);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  function autoResize() {
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 160) + "px";
+    }
+  }
+
+  async function handleSend(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || isLoading) return;
+
+    const userMessage: Message = { role: "user", content: trimmed };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+    setIsLoading(true);
+
+    try {
+      const res = await sendMessage(trimmed, conversationId);
+      setConversationId(res.conversation_id);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: res.answer,
+          sources: res.sources,
+        },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, something went wrong. Please try again.",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+      textareaRef.current?.focus();
+    }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    handleSend(input);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend(input);
+    }
+  }
+
+  return (
+    <div className="flex h-screen w-full flex-col bg-background">
+      {/* Header */}
+      <header className="flex items-center gap-3 border-b px-6 py-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+          <Bot className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-sm font-semibold">Sanovio Assistant</h1>
+          <p className="text-xs text-muted-foreground">
+            B. Braun product catalog
+          </p>
+        </div>
+      </header>
+
+      {/* Messages */}
+      <ScrollArea className="min-h-0 flex-1" ref={scrollRef}>
+        <div className="mx-auto max-w-3xl px-6">
+          {messages.length === 0 ? (
+            /* Welcome Screen */
+            <div className="flex min-h-[calc(100vh-10.5rem)] flex-col items-center justify-center text-center px-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mb-6">
+                <Sparkles className="h-8 w-8 text-primary" />
+              </div>
+              <h2 className="text-xl font-semibold mb-2">
+                Welcome to Sanovio Assistant
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-md mb-8">
+                Ask me anything about the B. Braun medical product catalog.
+                I can help you find products, compare specifications, and answer
+                technical questions.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
+                {SUGGESTED_QUESTIONS.map((question) => (
+                  <button
+                    key={question}
+                    onClick={() => handleSend(question)}
+                    className="rounded-xl border bg-card px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50 hover:border-primary/20"
+                  >
+                    {question}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6 py-6">
+              {messages.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
+                >
+                  {/* Avatar */}
+                  <div
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                      msg.role === "assistant"
+                        ? "bg-primary/10"
+                        : "bg-foreground/10"
+                    }`}
+                  >
+                    {msg.role === "assistant" ? (
+                      <Bot className="h-4.5 w-4.5 text-primary" />
+                    ) : (
+                      <User className="h-4.5 w-4.5 text-foreground/70" />
+                    )}
+                  </div>
+
+                  {/* Bubble */}
+                  <div
+                    className={`min-w-0 max-w-[85%] ${
+                      msg.role === "user" ? "flex flex-col items-end" : ""
+                    }`}
+                  >
+                    <div
+                      className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                        msg.role === "assistant"
+                          ? "rounded-tl-sm bg-muted"
+                          : "rounded-tr-sm bg-primary text-primary-foreground"
+                      }`}
+                    >
+                      {msg.role === "assistant" ? (
+                        <Markdown content={msg.content} />
+                      ) : (
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      )}
+                    </div>
+                    {msg.sources && msg.sources.length > 0 && (
+                      <SourceCards sources={msg.sources} />
+                    )}
+                  </div>
+                </div>
+              ))}
+              {isLoading && <TypingIndicator />}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+
+      {/* Input */}
+      <div className="border-t bg-background">
+        <div className="mx-auto max-w-3xl px-6 py-4">
+          <form
+            onSubmit={handleSubmit}
+            className="flex items-end gap-2 rounded-2xl border bg-card px-4 py-2 shadow-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background"
+          >
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                autoResize();
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about the product catalog..."
+              disabled={isLoading}
+              rows={1}
+              className="flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-xl"
+              disabled={isLoading || !input.trim()}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </form>
+          <p className="mt-2 text-center text-[11px] text-muted-foreground/60">
+            Sanovio may produce inaccurate information. Verify important details.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
