@@ -74,7 +74,7 @@ CASUAL_CHAT_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are a helpful assistant for the Sanovio B. Braun catalog. "
+            "You are a helpful assistant for the SANOVIO B. Braun catalog. "
             "If the user greets you, be polite and offer help with the catalog. "
             "If the user asks an off-topic question (e.g. general knowledge, coding, weather), "
             "politely refuse and state that you can only help with B. Braun medical products. "

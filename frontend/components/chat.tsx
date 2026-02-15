@@ -258,7 +258,7 @@ function TypingIndicator({ statusSteps }: { statusSteps: string[] }) {
   return (
     <div className="flex gap-3 max-w-3xl">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-hidden">
-        <img src="/sanovio-logo.png" alt="SANOVIO" className="h-full w-full object-cover" />
+        <img src="/sanovio-logo-round.png" alt="SANOVIO" className="h-full w-full object-cover" />
       </div>
       <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-3">
         {statusSteps.length === 0 ? (
@@ -414,8 +414,8 @@ export function Chat() {
     <div className="flex h-screen w-full flex-col bg-background">
       {/* Header */}
       <header className="flex items-center gap-3 border-b px-6 py-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl overflow-hidden bg-primary/10">
-          <img src="/sanovio-logo.png" alt="SANOVIO Logo" className="h-full w-full object-cover" />
+        <div className="flex h-5 items-center justify-center">
+          <img src="/sanovio-logo.svg" alt="SANOVIO Logo" className="h-full w-auto" />
         </div>
         <div>
           <h1 className="text-sm font-semibold">SANOVIO Assistant</h1>
@@ -432,7 +432,7 @@ export function Chat() {
             /* Welcome Screen */
             <div className="flex min-h-[calc(100vh-10.5rem)] flex-col items-center justify-center text-center px-4">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl overflow-hidden mb-6">
-                <img src="/sanovio-logo.png" alt="SANOVIO Logo" className="h-full w-full object-cover" />
+                <img src="/sanovio-logo-round.png" alt="SANOVIO Logo" className="h-full w-full object-cover" />
               </div>
               <h2 className="text-xl font-semibold mb-2">
                 Welcome to SANOVIO Assistant
@@ -469,7 +469,7 @@ export function Chat() {
                       }`}
                   >
                     {msg.role === "assistant" ? (
-                      <img src="/sanovio-logo.png" alt="SANOVIO" className="h-full w-full object-cover" />
+                      <img src="/sanovio-logo-round.png" alt="SANOVIO" className="h-full w-full object-cover" />
                     ) : (
                       <User className="h-4.5 w-4.5 text-foreground/70" />
                     )}
