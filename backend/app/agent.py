@@ -4,6 +4,7 @@
 import json
 import uuid
 from collections.abc import Generator
+import re
 from typing import TypedDict
 
 from langchain_core.documents import Document
@@ -103,35 +104,54 @@ def retrieve(state: AgentState) -> AgentState:
     return {**state, "documents": docs}
 
 
-GRADER_PROMPT = ChatPromptTemplate.from_messages(
+BATCH_GRADER_PROMPT = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are a relevance grader. Given a user question and a retrieved document, "
-            "determine if the document contains information relevant to answering the question. "
-            "Respond with ONLY 'yes' or 'no'.",
+            "You are a relevance grader. You will be given a user question and a list of retrieved documents. "
+            "Your task is to identify which documents contain information relevant to answering the question. "
+            "Output ONLY a comma-separated list of the indices (1-based) of the relevant documents (e.g., '1, 3, 5'). "
+            "If no documents are relevant, output 'none'.",
         ),
         (
             "human",
-            "Question: {question}\n\nDocument:\n{document}",
+            "Question: {question}\n\nDocuments:\n{documents}",
         ),
     ]
 )
 
 
-# LLM-based filter: keep only chunks relevant to the query
+# LLM-based filter: keep only chunks relevant to the query (Batched)
 def grade_documents(state: AgentState) -> AgentState:
     log.info("node_grade_documents", num_docs=len(state["documents"]))
-    llm = get_llm()
-    chain = GRADER_PROMPT | llm | StrOutputParser()
 
-    relevant_docs = []
-    for doc in state["documents"]:
-        result = chain.invoke(
-            {"question": state["query"], "document": doc.page_content}
-        )
-        if "yes" in result.lower():
-            relevant_docs.append(doc)
+    if not state["documents"]:
+        return state
+
+    llm = get_llm()
+    chain = BATCH_GRADER_PROMPT | llm | StrOutputParser()
+
+    doc_strings = [
+        f"Document {i+1}:\n{doc.page_content}"
+        for i, doc in enumerate(state["documents"])
+    ]
+    formatted_docs = "\n\n".join(doc_strings)
+
+    result = chain.invoke(
+        {"question": state["query"], "documents": formatted_docs}
+    )
+
+    # Parse results
+    clean_result = result.strip().lower()
+    relevant_indices = set()
+    
+    if "none" not in clean_result:
+        for num in re.findall(r'\d+', clean_result):
+             relevant_indices.add(int(num) - 1)
+
+    relevant_docs = [
+        doc for i, doc in enumerate(state["documents"]) if i in relevant_indices
+    ]
 
     log.info("grading_complete", relevant=len(
         relevant_docs), total=len(state["documents"]))
