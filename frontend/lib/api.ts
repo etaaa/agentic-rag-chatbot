@@ -72,6 +72,7 @@ export async function streamMessage(
             answer: event.answer,
             sources: event.sources,
             conversation_id: event.conversation_id,
+            rewritten_query: event.rewritten_query,
           });
         }
       } catch {
