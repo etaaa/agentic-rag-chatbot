@@ -6,8 +6,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
-from app.agent import run_agent
+from app.agent import run_agent, stream_agent
 from app.config import settings
 from app.ingestion import index_pdf
 from app.logging import get_logger, setup_logging
@@ -55,19 +56,13 @@ async def health():
     return {"status": "ok"}
 
 
-# Run the agentic RAG pipeline and return an answer with sources
-@app.post("/chat", response_model=ChatResponse)
+# Stream live status updates and the final answer via SSE
+@app.post("/chat")
 async def chat(request: ChatRequest):
-    start = time.time()
     log.info("chat_request", message=request.message, conversation_id=request.conversation_id)
 
-    response = run_agent(request.message, request.conversation_id)
-
-    duration = time.time() - start
-    log.info(
-        "chat_response",
-        conversation_id=response.conversation_id,
-        num_sources=len(response.sources),
-        duration_s=round(duration, 2),
+    return StreamingResponse(
+        stream_agent(request.message, request.conversation_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-    return response

@@ -13,13 +13,17 @@ import {
   FileText,
   Table,
   Sparkles,
+  Check,
+  Loader2,
+  ChevronDown,
 } from "lucide-react";
-import { sendMessage, type Source } from "@/lib/api";
+import { streamMessage, type Source } from "@/lib/api";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
+  steps?: string[];
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -50,6 +54,37 @@ function SourceCards({ sources }: { sources: Source[] }) {
           </Badge>
         </div>
       ))}
+    </div>
+  );
+}
+
+function StepsDetail({ steps }: { steps: string[] }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ChevronDown
+          className={`h-3.5 w-3.5 transition-transform ${open ? "" : "-rotate-90"}`}
+        />
+        <span>{steps.length} steps performed</span>
+      </button>
+      {open && (
+        <div className="mt-1.5 flex flex-col gap-1 pl-1">
+          {steps.map((step, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 text-xs text-muted-foreground"
+            >
+              <Check className="h-3 w-3 shrink-0 text-emerald-500" />
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -127,18 +162,47 @@ function Markdown({ content }: { content: string }) {
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ statusSteps }: { statusSteps: string[] }) {
   return (
     <div className="flex gap-3 max-w-3xl">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
         <Bot className="h-4.5 w-4.5 text-primary" />
       </div>
       <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-3">
-        <div className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
-          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
-          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
-        </div>
+        {statusSteps.length === 0 ? (
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
+            <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
+            <span className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {statusSteps.map((step, i) => {
+              const isActive = i === statusSteps.length - 1;
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 animate-fade-in-up text-xs"
+                >
+                  {isActive ? (
+                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                  )}
+                  <span
+                    className={
+                      isActive
+                        ? "text-foreground"
+                        : "text-muted-foreground"
+                    }
+                  >
+                    {step}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -148,7 +212,9 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [statusSteps, setStatusSteps] = useState<string[]>([]);
   const [conversationId, setConversationId] = useState<string>();
+  const statusStepsRef = useRef<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -165,7 +231,7 @@ export function Chat() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading, scrollToBottom]);
+  }, [messages, isLoading, statusSteps, scrollToBottom]);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -190,18 +256,40 @@ export function Chat() {
       textareaRef.current.style.height = "auto";
     }
     setIsLoading(true);
+    setStatusSteps([]);
+    statusStepsRef.current = [];
 
     try {
-      const res = await sendMessage(trimmed, conversationId);
-      setConversationId(res.conversation_id);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: res.answer,
-          sources: res.sources,
+      await streamMessage(
+        trimmed,
+        conversationId,
+        (status) => {
+          statusStepsRef.current = [...statusStepsRef.current, status];
+          setStatusSteps(statusStepsRef.current);
         },
-      ]);
+        (res) => {
+          setConversationId(res.conversation_id);
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: res.answer,
+              sources: res.sources,
+              steps: statusStepsRef.current.length > 0 ? statusStepsRef.current : undefined,
+            },
+          ]);
+        },
+        (error) => {
+          console.error(error);
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "Sorry, something went wrong. Please try again.",
+            },
+          ]);
+        },
+      );
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -212,6 +300,7 @@ export function Chat() {
       ]);
     } finally {
       setIsLoading(false);
+      setStatusSteps([]);
       textareaRef.current?.focus();
     }
   }
@@ -313,13 +402,16 @@ export function Chat() {
                         <p className="whitespace-pre-wrap">{msg.content}</p>
                       )}
                     </div>
+                    {msg.steps && msg.steps.length > 0 && (
+                      <StepsDetail steps={msg.steps} />
+                    )}
                     {msg.sources && msg.sources.length > 0 && (
                       <SourceCards sources={msg.sources} />
                     )}
                   </div>
                 </div>
               ))}
-              {isLoading && <TypingIndicator />}
+              {isLoading && <TypingIndicator statusSteps={statusSteps} />}
             </div>
           )}
         </div>

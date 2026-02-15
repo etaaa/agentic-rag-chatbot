@@ -1,7 +1,9 @@
 # LangGraph agentic RAG pipeline.
 # Flow: retrieve -> grade_documents -> [generate | rewrite_query -> retrieve (max 1 retry)]
 
+import json
 import uuid
+from collections.abc import Generator
 from typing import TypedDict
 
 from langchain_core.documents import Document
@@ -182,6 +184,66 @@ def build_graph() -> StateGraph:
 
 # Compiled once at import time to avoid rebuilding per request
 rag_agent = build_graph()
+
+
+NODE_STATUS_LABELS: dict[str, str] = {
+    "retrieve": "Searching documents...",
+    "grade_documents": "Evaluating relevance...",
+    "rewrite_query": "Refining search...",
+    "generate": "Generating answer...",
+}
+
+
+def _sse_event(data: dict) -> str:
+    return f"data: {json.dumps(data)}\n\n"
+
+
+def stream_agent(query: str, conversation_id: str | None = None) -> Generator[str, None, None]:
+    conv_id = conversation_id or str(uuid.uuid4())
+    log.info("agent_stream_started", query=query, conversation_id=conv_id)
+
+    initial_state: AgentState = {
+        "query": query,
+        "documents": [],
+        "generation": "",
+        "query_rewritten": False,
+        "conversation_id": conv_id,
+    }
+
+    result: AgentState | None = None
+    for event in rag_agent.stream(initial_state):
+        for node_name, node_output in event.items():
+            result = node_output
+            label = NODE_STATUS_LABELS.get(node_name)
+            if label:
+                yield _sse_event({"type": "status", "message": label})
+
+    if result is None:
+        yield _sse_event({
+            "type": "answer",
+            "answer": "Something went wrong — no result from the agent.",
+            "sources": [],
+            "conversation_id": conv_id,
+        })
+        return
+
+    sources = [
+        {
+            "page": doc.metadata.get("page", 0),
+            "content_preview": doc.page_content[:150],
+            "content_type": doc.metadata.get("content_type", "text"),
+        }
+        for doc in result.get("documents", [])
+    ]
+
+    log.info("agent_stream_complete", conversation_id=conv_id, num_sources=len(sources))
+
+    yield _sse_event({
+        "type": "answer",
+        "answer": result.get("generation", ""),
+        "sources": sources,
+        "conversation_id": conv_id,
+    })
 
 
 def run_agent(query: str, conversation_id: str | None = None) -> ChatResponse:
