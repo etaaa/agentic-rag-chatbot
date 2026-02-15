@@ -5,12 +5,14 @@ export interface Source {
   content_preview: string;
   source_text: string;
   content_type: "text" | "table";
+  match_type: string;
 }
 
 export interface ChatResponse {
   answer: string;
   sources: Source[];
   conversation_id: string;
+  rewritten_query?: string;
 }
 
 export type SSEStatusEvent = { type: "status"; message: string };

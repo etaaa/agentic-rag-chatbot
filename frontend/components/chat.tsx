@@ -25,6 +25,7 @@ interface Message {
   content: string;
   sources?: Source[];
   steps?: string[];
+  rewrittenQuery?: string;
 }
 
 const SUGGESTED_QUESTIONS = [
@@ -37,8 +38,6 @@ const SUGGESTED_QUESTIONS = [
 
 
 function SourceModal({ source, onClose }: { source: Source; onClose: () => void }) {
-  if (!source) return null;
-
   // Prevent scrolling on body when modal is open
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -46,6 +45,8 @@ function SourceModal({ source, onClose }: { source: Source; onClose: () => void 
       document.body.style.overflow = "unset";
     };
   }, []);
+
+  if (!source) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200" onClick={onClose}>
@@ -76,6 +77,17 @@ function SourceModal({ source, onClose }: { source: Source; onClose: () => void 
 function SourceCards({ sources }: { sources: Source[] }) {
   const [selectedSource, setSelectedSource] = useState<Source | null>(null);
 
+  // Listen for custom event to open modal from markdown links
+  useEffect(() => {
+    const handleOpenSource = (e: CustomEvent<Source>) => {
+      setSelectedSource(e.detail);
+    };
+    document.addEventListener('open-source-modal', handleOpenSource as EventListener);
+    return () => {
+      document.removeEventListener('open-source-modal', handleOpenSource as EventListener);
+    };
+  }, []);
+
   if (sources.length === 0) return null;
 
   return (
@@ -92,10 +104,22 @@ function SourceCards({ sources }: { sources: Source[] }) {
             ) : (
               <FileText className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
             )}
-            <span className="font-medium">Page {source.page}</span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-              {source.content_type}
-            </Badge>
+            <div className="flex flex-col items-start gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">Page {source.page}</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 min-w-0">
+                  {source.content_type}
+                </Badge>
+              </div>
+              {source.match_type && (
+                <span className={`text-[9px] px-1 py-0 rounded-sm font-medium ${source.match_type === "Exact Match"
+                  ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                  : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                  }`}>
+                  {source.match_type}
+                </span>
+              )}
+            </div>
           </button>
         ))}
       </div>
@@ -137,12 +161,31 @@ function StepsDetail({ steps }: { steps: string[] }) {
   );
 }
 
-function Markdown({ content }: { content: string }) {
+function Markdown({ content, onSourceClick }: { content: string, onSourceClick?: (page: number) => void }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+        a: ({ href, children }) => {
+          if (href?.startsWith("#source-")) {
+            const page = parseInt(href.replace("#source-", ""));
+            return (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (onSourceClick) onSourceClick(page);
+                }}
+                className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline hover:text-primary/80 bg-primary/10 px-1 py-0.5 rounded cursor-pointer mx-0.5 align-baseline"
+                title="View Source"
+              >
+                <FileText className="h-3 w-3" />
+                {children}
+              </button>
+            );
+          }
+          return <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{children}</a>;
+        },
+        p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
         strong: ({ children }) => (
           <strong className="font-semibold">{children}</strong>
         ),
@@ -205,7 +248,8 @@ function Markdown({ content }: { content: string }) {
         ),
       }}
     >
-      {content}
+      {/* Pre-process content to make citations clickable links */}
+      {content.replace(/\(Page (\d+)\)/g, "[[Page $1]](#source-$1)")}
     </ReactMarkdown>
   );
 }
@@ -324,6 +368,7 @@ export function Chat() {
               content: res.answer,
               sources: res.sources,
               steps: statusStepsRef.current.length > 0 ? statusStepsRef.current : undefined,
+              rewrittenQuery: res.rewritten_query,
             },
           ]);
         },
@@ -441,8 +486,24 @@ export function Chat() {
                         : "rounded-tr-sm bg-primary text-primary-foreground"
                         }`}
                     >
+                      {msg.rewrittenQuery && (
+                        <div className="mb-2 text-xs text-muted-foreground flex items-center gap-1.5 bg-background/50 px-2 py-1 rounded-md border border-border/50">
+                          <Sparkles className="h-3 w-3 text-amber-500" />
+                          <span>Interpreted as: <span className="italic">&quot;{msg.rewrittenQuery}&quot;</span></span>
+                        </div>
+                      )}
+
                       {msg.role === "assistant" ? (
-                        <Markdown content={msg.content} />
+                        <Markdown content={msg.content} onSourceClick={(page) => {
+                          const source = msg.sources?.find(s => s.page === page);
+                          if (source) {
+                            // Trigger finding and opening this source
+                            // Since we don't have easy access to set the modal from here without context,
+                            // we will dispatch a custom event or use a ref. 
+                            // For simplicity in this single-file component:
+                            document.dispatchEvent(new CustomEvent('open-source-modal', { detail: source }));
+                          }
+                        }} />
                       ) : (
                         <p className="whitespace-pre-wrap">{msg.content}</p>
                       )}

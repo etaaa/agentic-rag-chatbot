@@ -232,6 +232,7 @@ def stream_agent(query: str, conversation_id: str | None = None) -> Generator[st
             "content_preview": doc.page_content[:150],
             "content_type": doc.metadata.get("content_type", "text"),
             "source_text": doc.page_content,
+            "match_type": doc.metadata.get("match_type", "Unknown Match"),
         }
         for doc in result.get("documents", [])
     ]
@@ -243,6 +244,7 @@ def stream_agent(query: str, conversation_id: str | None = None) -> Generator[st
         "answer": result.get("generation", ""),
         "sources": sources,
         "conversation_id": conv_id,
+        "rewritten_query": result.get("query") if result.get("query_rewritten") else None,
     })
 
 
@@ -266,6 +268,7 @@ def run_agent(query: str, conversation_id: str | None = None) -> ChatResponse:
             content_preview=doc.page_content[:150],
             content_type=doc.metadata.get("content_type", "text"),
             source_text=doc.page_content,
+            match_type=doc.metadata.get("match_type", "Unknown Match"),
         )
         for doc in result["documents"]
     ]
@@ -277,4 +280,5 @@ def run_agent(query: str, conversation_id: str | None = None) -> ChatResponse:
         answer=result["generation"],
         sources=sources,
         conversation_id=conv_id,
+        rewritten_query=result["query"] if result["query_rewritten"] else None,
     )

@@ -11,12 +11,14 @@ class Source(BaseModel):
     content_preview: str
     source_text: str
     content_type: str  # "table" or "text"
+    match_type: str = "semantic"  # "keyword" or "semantic"
 
 
 class ChatResponse(BaseModel):
     answer: str
     sources: list[Source]
     conversation_id: str
+    rewritten_query: str | None = None
 
 
 class IndexResponse(BaseModel):

@@ -164,11 +164,13 @@ class HybridRetriever(BaseRetriever):
         # Prioritize BM25 for exact matches
         for doc in bm25_docs:
             if doc.page_content not in seen:
+                doc.metadata["match_type"] = "Exact Match"
                 seen.add(doc.page_content)
                 combined.append(doc)
 
         for doc in vector_docs:
             if doc.page_content not in seen:
+                doc.metadata["match_type"] = "Semantic Match"
                 seen.add(doc.page_content)
                 combined.append(doc)
 
