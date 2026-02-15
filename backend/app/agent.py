@@ -26,6 +26,7 @@ class AgentState(TypedDict):
     generation: str
     query_rewritten: bool
     conversation_id: str
+    route: str
 
 
 def get_llm() -> ChatOpenAI:
@@ -35,6 +36,62 @@ def get_llm() -> ChatOpenAI:
         base_url=settings.openrouter_base_url,
         temperature=0,
     )
+
+
+ROUTER_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a classifier. Determine if the user's input is a question about medical products/catalogs (search) "
+            "or if it is a general conversation, greeting, or off-topic question (chat). "
+            "Examples: "
+            "'Hi', 'Who are you?', 'Thanks' -> chat "
+            "'What is the capital of France?', 'Write a poem', 'Python code' -> chat "
+            "'What syringes do you have?', 'Product 123', 'Needle specs' -> search "
+            "Output ONLY 'search' or 'chat'.",
+        ),
+        ("human", "{query}"),
+    ]
+)
+
+
+def router(state: AgentState) -> AgentState:
+    log.info("node_router", query=state["query"])
+    llm = get_llm()
+    chain = ROUTER_PROMPT | llm | StrOutputParser()
+    result = chain.invoke({"query": state["query"]})
+    decision = result.strip().lower()
+    
+    # Fallback to search if unclear
+    if decision not in ["search", "chat"]:
+        decision = "search"
+        
+    log.info("router_decision", decision=decision)
+    return {**state, "route": decision}
+
+
+CASUAL_CHAT_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are a helpful assistant for the Sanovio B. Braun catalog. "
+            "If the user greets you, be polite and offer help with the catalog. "
+            "If the user asks an off-topic question (e.g. general knowledge, coding, weather), "
+            "politely refuse and state that you can only help with B. Braun medical products. "
+            "Do NOT try to answer off-topic questions. "
+            "Do NOT make up product info.",
+        ),
+        ("human", "{query}"),
+    ]
+)
+
+
+def casual_chat(state: AgentState) -> AgentState:
+    log.info("node_casual_chat", query=state["query"])
+    llm = get_llm()
+    chain = CASUAL_CHAT_PROMPT | llm | StrOutputParser()
+    result = chain.invoke({"query": state["query"]})
+    return {**state, "generation": result, "documents": []}
 
 
 # Fetch top-k relevant chunks from the vector store
@@ -163,12 +220,22 @@ def generate(state: AgentState) -> AgentState:
 def build_graph() -> StateGraph:
     graph = StateGraph(AgentState)
 
+    graph.add_node("router", router)
+    graph.add_node("casual_chat", casual_chat)
     graph.add_node("retrieve", retrieve)
     graph.add_node("grade_documents", grade_documents)
     graph.add_node("rewrite_query", rewrite_query)
     graph.add_node("generate", generate)
 
-    graph.set_entry_point("retrieve")
+    graph.set_entry_point("router")
+    
+    graph.add_conditional_edges(
+        "router",
+        lambda state: state["route"],
+        {"search": "retrieve", "chat": "casual_chat"}
+    )
+    
+    graph.add_edge("casual_chat", END)
     graph.add_edge("retrieve", "grade_documents")
     graph.add_conditional_edges(
         "grade_documents",
@@ -190,6 +257,8 @@ NODE_STATUS_LABELS: dict[str, str] = {
     "grade_documents": "Evaluating relevance...",
     "rewrite_query": "Refining search...",
     "generate": "Generating answer...",
+    "router": "Understanding intent...",
+    "casual_chat": "Thinking...",
 }
 
 

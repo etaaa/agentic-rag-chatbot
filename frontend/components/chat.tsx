@@ -539,7 +539,7 @@ export function Chat() {
               }}
               onKeyDown={handleKeyDown}
               placeholder="Ask about the product catalog..."
-              disabled={isLoading}
+              disabled={false}
               rows={1}
               className="flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
             />
