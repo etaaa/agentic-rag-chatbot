@@ -2,6 +2,7 @@
 
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +11,7 @@ from app.agent import run_agent
 from app.config import settings
 from app.ingestion import index_pdf
 from app.logging import get_logger, setup_logging
-from app.models import ChatRequest, ChatResponse, IndexResponse
+from app.models import ChatRequest, ChatResponse
 
 setup_logging()
 log = get_logger(__name__)
@@ -19,6 +20,17 @@ log = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("app_starting", llm_model=settings.llm_model)
+
+    chroma_path = Path(settings.chroma_dir)
+    if not chroma_path.exists():
+        log.info("auto_indexing_started", reason="chroma directory not found")
+        start = time.time()
+        num_chunks = index_pdf()
+        duration = time.time() - start
+        log.info("auto_indexing_complete", num_chunks=num_chunks, duration_s=round(duration, 2))
+    else:
+        log.info("auto_indexing_skipped", reason="chroma directory already exists")
+
     yield
     log.info("app_shutting_down")
 
@@ -41,16 +53,6 @@ app.add_middleware(
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-# Trigger PDF re-indexing into the vector store
-@app.post("/index", response_model=IndexResponse)
-async def index_catalog():
-    start = time.time()
-    num_chunks = index_pdf()
-    duration = time.time() - start
-    log.info("indexing_api_complete", num_chunks=num_chunks, duration_s=round(duration, 2))
-    return IndexResponse(status="ok", num_chunks=num_chunks)
 
 
 # Run the agentic RAG pipeline and return an answer with sources
