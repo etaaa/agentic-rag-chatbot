@@ -3,6 +3,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export interface Source {
   page: number;
   content_preview: string;
+  source_text: string;
   content_type: "text" | "table";
 }
 

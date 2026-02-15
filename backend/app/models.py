@@ -9,6 +9,7 @@ class ChatRequest(BaseModel):
 class Source(BaseModel):
     page: int
     content_preview: str
+    source_text: str
     content_type: str  # "table" or "text"
 
 

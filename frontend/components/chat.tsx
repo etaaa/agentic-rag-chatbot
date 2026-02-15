@@ -16,6 +16,7 @@ import {
   Check,
   Loader2,
   ChevronDown,
+  X,
 } from "lucide-react";
 import { streamMessage, type Source } from "@/lib/api";
 
@@ -33,28 +34,75 @@ const SUGGESTED_QUESTIONS = [
   "Tell me about safety products",
 ];
 
+
+
+function SourceModal({ source, onClose }: { source: Source; onClose: () => void }) {
+  if (!source) return null;
+
+  // Prevent scrolling on body when modal is open
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200" onClick={onClose}>
+      <div className="relative max-h-[85vh] w-full max-w-2xl flex flex-col rounded-xl border bg-background shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b px-6 py-4">
+          <div>
+            <h3 className="text-lg font-semibold">Source Reference</h3>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              <span className="font-medium">Page {source.page}</span>
+              <span>•</span>
+              <span className="uppercase">{source.content_type}</span>
+            </div>
+          </div>
+          <button className="rounded-full p-1 opacity-70 hover:bg-muted hover:opacity-100 transition-all" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <Markdown content={source.source_text} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SourceCards({ sources }: { sources: Source[] }) {
+  const [selectedSource, setSelectedSource] = useState<Source | null>(null);
+
   if (sources.length === 0) return null;
 
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      {sources.map((source, i) => (
-        <div
-          key={i}
-          className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs transition-colors hover:bg-muted/50"
-        >
-          {source.content_type === "table" ? (
-            <Table className="h-3.5 w-3.5 text-muted-foreground" />
-          ) : (
-            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-          )}
-          <span className="font-medium">Page {source.page}</span>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-            {source.content_type}
-          </Badge>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {sources.map((source, i) => (
+          <button
+            key={i}
+            onClick={() => setSelectedSource(source)}
+            className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs transition-colors hover:bg-muted/50 hover:border-primary/30 text-left group"
+          >
+            {source.content_type === "table" ? (
+              <Table className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+            ) : (
+              <FileText className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+            )}
+            <span className="font-medium">Page {source.page}</span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+              {source.content_type}
+            </Badge>
+          </button>
+        ))}
+      </div>
+      {selectedSource && (
+        <SourceModal source={selectedSource} onClose={() => setSelectedSource(null)} />
+      )}
+    </>
   );
 }
 
@@ -370,11 +418,10 @@ export function Chat() {
                 >
                   {/* Avatar */}
                   <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                      msg.role === "assistant"
-                        ? "bg-primary/10"
-                        : "bg-foreground/10"
-                    }`}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${msg.role === "assistant"
+                      ? "bg-primary/10"
+                      : "bg-foreground/10"
+                      }`}
                   >
                     {msg.role === "assistant" ? (
                       <Bot className="h-4.5 w-4.5 text-primary" />
@@ -385,16 +432,14 @@ export function Chat() {
 
                   {/* Bubble */}
                   <div
-                    className={`min-w-0 max-w-[85%] ${
-                      msg.role === "user" ? "flex flex-col items-end" : ""
-                    }`}
+                    className={`min-w-0 max-w-[85%] ${msg.role === "user" ? "flex flex-col items-end" : ""
+                      }`}
                   >
                     <div
-                      className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                        msg.role === "assistant"
-                          ? "rounded-tl-sm bg-muted"
-                          : "rounded-tr-sm bg-primary text-primary-foreground"
-                      }`}
+                      className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === "assistant"
+                        ? "rounded-tl-sm bg-muted"
+                        : "rounded-tr-sm bg-primary text-primary-foreground"
+                        }`}
                     >
                       {msg.role === "assistant" ? (
                         <Markdown content={msg.content} />

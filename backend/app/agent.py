@@ -231,6 +231,7 @@ def stream_agent(query: str, conversation_id: str | None = None) -> Generator[st
             "page": doc.metadata.get("page", 0),
             "content_preview": doc.page_content[:150],
             "content_type": doc.metadata.get("content_type", "text"),
+            "source_text": doc.page_content,
         }
         for doc in result.get("documents", [])
     ]
@@ -264,6 +265,7 @@ def run_agent(query: str, conversation_id: str | None = None) -> ChatResponse:
             page=doc.metadata.get("page", 0),
             content_preview=doc.page_content[:150],
             content_type=doc.metadata.get("content_type", "text"),
+            source_text=doc.page_content,
         )
         for doc in result["documents"]
     ]
