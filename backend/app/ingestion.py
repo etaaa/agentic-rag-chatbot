@@ -75,14 +75,10 @@ def extract_chunks_from_pdf(pdf_path: str) -> list[Document]:
                 )
             )
 
-        # Each table gets its own chunk, prefixed with the product heading for context
         for md in table_chunks:
-            heading = _extract_heading(page_text)
-            content = f"Product: {heading}\n\n{md}" if heading else md
-
             chunks.append(
                 Document(
-                    page_content=content,
+                    page_content=md,
                     metadata={
                         "page": page_num,
                         "content_type": "table",
@@ -94,18 +90,6 @@ def extract_chunks_from_pdf(pdf_path: str) -> list[Document]:
     doc.close()
     log.info("pdf_extracted", num_chunks=len(chunks), pdf_path=pdf_path)
     return chunks
-
-
-# Heuristic: grab the first short line or one containing ® as the product name
-def _extract_heading(page_text: str) -> str:
-    lines = page_text.strip().split("\n")
-    for line in lines:
-        line = line.strip()
-        if len(line) < 5 or line.isdigit():
-            continue
-        if "®" in line or len(line) < 80:
-            return line
-    return ""
 
 
 def get_embeddings() -> OpenAIEmbeddings:
