@@ -8,11 +8,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from app.agent import run_agent, stream_agent
+from app.agent import stream_agent
 from app.config import settings
 from app.ingestion import index_pdf
-from app.logging import get_logger, setup_logging
-from app.models import ChatRequest, ChatResponse
+from app.log import get_logger, setup_logging
+from app.models import ChatRequest
 
 setup_logging()
 log = get_logger(__name__)

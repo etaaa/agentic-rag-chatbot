@@ -2,9 +2,9 @@
 # Flow: retrieve -> grade_documents -> [generate | rewrite_query -> retrieve (max 1 retry)]
 
 import json
+import re
 import uuid
 from collections.abc import Generator
-import re
 from typing import TypedDict
 
 from langchain_core.documents import Document
@@ -15,8 +15,7 @@ from langgraph.graph import END, StateGraph
 
 from app.config import settings
 from app.ingestion import get_retriever
-from app.logging import get_logger
-from app.models import ChatResponse, Source
+from app.log import get_logger
 
 log = get_logger(__name__)
 
@@ -26,17 +25,15 @@ class AgentState(TypedDict):
     documents: list[Document]
     generation: str
     query_rewritten: bool
-    conversation_id: str
     route: str
 
 
-def get_llm() -> ChatOpenAI:
-    return ChatOpenAI(
-        model=settings.llm_model,
-        api_key=settings.openrouter_api_key,
-        base_url=settings.openrouter_base_url,
-        temperature=0,
-    )
+llm = ChatOpenAI(
+    model=settings.llm_model,
+    api_key=settings.openrouter_api_key,
+    base_url=settings.openrouter_base_url,
+    temperature=0,
+)
 
 
 ROUTER_PROMPT = ChatPromptTemplate.from_messages(
@@ -58,15 +55,14 @@ ROUTER_PROMPT = ChatPromptTemplate.from_messages(
 
 def router(state: AgentState) -> AgentState:
     log.info("node_router", query=state["query"])
-    llm = get_llm()
     chain = ROUTER_PROMPT | llm | StrOutputParser()
     result = chain.invoke({"query": state["query"]})
     decision = result.strip().lower()
-    
+
     # Fallback to search if unclear
     if decision not in ["search", "chat"]:
         decision = "search"
-        
+
     log.info("router_decision", decision=decision)
     return {**state, "route": decision}
 
@@ -89,7 +85,6 @@ CASUAL_CHAT_PROMPT = ChatPromptTemplate.from_messages(
 
 def casual_chat(state: AgentState) -> AgentState:
     log.info("node_casual_chat", query=state["query"])
-    llm = get_llm()
     chain = CASUAL_CHAT_PROMPT | llm | StrOutputParser()
     result = chain.invoke({"query": state["query"]})
     return {**state, "generation": result, "documents": []}
@@ -128,7 +123,6 @@ def grade_documents(state: AgentState) -> AgentState:
     if not state["documents"]:
         return state
 
-    llm = get_llm()
     chain = BATCH_GRADER_PROMPT | llm | StrOutputParser()
 
     doc_strings = [
@@ -144,10 +138,10 @@ def grade_documents(state: AgentState) -> AgentState:
     # Parse results
     clean_result = result.strip().lower()
     relevant_indices = set()
-    
+
     if "none" not in clean_result:
         for num in re.findall(r'\d+', clean_result):
-             relevant_indices.add(int(num) - 1)
+            relevant_indices.add(int(num) - 1)
 
     relevant_docs = [
         doc for i, doc in enumerate(state["documents"]) if i in relevant_indices
@@ -183,7 +177,6 @@ REWRITE_PROMPT = ChatPromptTemplate.from_messages(
 # Reformulate the query for better retrieval on the German catalog
 def rewrite_query(state: AgentState) -> AgentState:
     log.info("node_rewrite_query", original_query=state["query"])
-    llm = get_llm()
     chain = REWRITE_PROMPT | llm | StrOutputParser()
     new_query = chain.invoke({"query": state["query"]})
     log.info("query_rewritten", new_query=new_query)
@@ -224,7 +217,6 @@ def generate(state: AgentState) -> AgentState:
             "generation": "I don't have enough information in the catalog to answer this question.",
         }
 
-    llm = get_llm()
     chain = GENERATE_PROMPT | llm | StrOutputParser()
 
     context = "\n\n---\n\n".join(
@@ -248,13 +240,13 @@ def build_graph() -> StateGraph:
     graph.add_node("generate", generate)
 
     graph.set_entry_point("router")
-    
+
     graph.add_conditional_edges(
         "router",
         lambda state: state["route"],
         {"search": "retrieve", "chat": "casual_chat"}
     )
-    
+
     graph.add_edge("casual_chat", END)
     graph.add_edge("retrieve", "grade_documents")
     graph.add_conditional_edges(
@@ -295,7 +287,6 @@ def stream_agent(query: str, conversation_id: str | None = None) -> Generator[st
         "documents": [],
         "generation": "",
         "query_rewritten": False,
-        "conversation_id": conv_id,
     }
 
     result: AgentState | None = None
@@ -335,39 +326,3 @@ def stream_agent(query: str, conversation_id: str | None = None) -> Generator[st
         "conversation_id": conv_id,
         "rewritten_query": result.get("query") if result.get("query_rewritten") else None,
     })
-
-
-def run_agent(query: str, conversation_id: str | None = None) -> ChatResponse:
-    conv_id = conversation_id or str(uuid.uuid4())
-    log.info("agent_run_started", query=query, conversation_id=conv_id)
-
-    result = rag_agent.invoke(
-        {
-            "query": query,
-            "documents": [],
-            "generation": "",
-            "query_rewritten": False,
-            "conversation_id": conv_id,
-        }
-    )
-
-    sources = [
-        Source(
-            page=doc.metadata.get("page", 0),
-            content_preview=doc.page_content[:150],
-            content_type=doc.metadata.get("content_type", "text"),
-            source_text=doc.page_content,
-            match_type=doc.metadata.get("match_type", "Unknown Match"),
-        )
-        for doc in result["documents"]
-    ]
-
-    log.info("agent_run_complete", conversation_id=conv_id,
-             num_sources=len(sources))
-
-    return ChatResponse(
-        answer=result["generation"],
-        sources=sources,
-        conversation_id=conv_id,
-        rewritten_query=result["query"] if result["query_rewritten"] else None,
-    )
