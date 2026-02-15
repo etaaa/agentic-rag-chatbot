@@ -13,7 +13,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 from app.config import settings
-from app.ingestion import get_vectorstore
+from app.ingestion import get_retriever
 from app.logging import get_logger
 from app.models import ChatResponse, Source
 
@@ -40,9 +40,8 @@ def get_llm() -> ChatOpenAI:
 # Fetch top-k relevant chunks from the vector store
 def retrieve(state: AgentState) -> AgentState:
     log.info("node_retrieve", query=state["query"])
-    vectorstore = get_vectorstore()
-    docs = vectorstore.similarity_search(
-        state["query"], k=settings.retrieval_k)
+    retriever = get_retriever()
+    docs = retriever.invoke(state["query"])
     log.info("retrieved_docs", count=len(docs))
     return {**state, "documents": docs}
 

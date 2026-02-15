@@ -6,6 +6,8 @@ from pathlib import Path
 import fitz
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_openai import OpenAIEmbeddings
 
 from app.config import settings
@@ -140,3 +142,77 @@ def get_vectorstore() -> Chroma:
         persist_directory=settings.chroma_dir,
         embedding_function=get_embeddings(),
     )
+
+
+class HybridRetriever(BaseRetriever):
+    vector_retriever: BaseRetriever
+    bm25_retriever: BaseRetriever
+
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> list[Document]:
+        # Simple combination: BM25 first, then Vector.
+        # Deduplicate by page content.
+
+        bm25_docs = self.bm25_retriever.invoke(query)
+        vector_docs = self.vector_retriever.invoke(query)
+
+        # Combine and deduplicate
+        seen = set()
+        combined = []
+
+        # Prioritize BM25 for exact matches
+        for doc in bm25_docs:
+            if doc.page_content not in seen:
+                seen.add(doc.page_content)
+                combined.append(doc)
+
+        for doc in vector_docs:
+            if doc.page_content not in seen:
+                seen.add(doc.page_content)
+                combined.append(doc)
+
+        return combined
+
+
+def get_retriever() -> BaseRetriever:
+    vectorstore = get_vectorstore()
+    vector_retriever = vectorstore.as_retriever(
+        search_kwargs={"k": settings.retrieval_k})
+
+    try:
+        from langchain_community.retrievers import BM25Retriever
+
+        # Verify we can access the underlying collection
+        if not vectorstore._collection.count():
+             return vector_retriever
+
+        # fetch all docs to build BM25 index
+        # Chroma's get() returns dict with 'documents' and 'metadatas'
+        data = vectorstore.get()
+        docs_content = data["documents"]
+        metadatas = data["metadatas"]
+
+        if not docs_content:
+            return vector_retriever
+
+        # Reconstruct documents for BM25
+        full_docs = []
+        for i in range(len(docs_content)):
+            full_docs.append(
+                Document(page_content=docs_content[i], metadata=metadatas[i])
+            )
+
+        bm25_retriever = BM25Retriever.from_documents(full_docs)
+        bm25_retriever.k = settings.retrieval_k
+
+        log.info("hybrid_retriever_initialized",
+                 num_docs=len(full_docs))
+        return HybridRetriever(vector_retriever=vector_retriever, bm25_retriever=bm25_retriever)
+
+    except ImportError:
+        log.warning("rank_bm25 not found, falling back to vector search only")
+        return vector_retriever
+    except Exception as e:
+        log.error("hybrid_retriever_failed", error=str(e))
+        return vector_retriever
