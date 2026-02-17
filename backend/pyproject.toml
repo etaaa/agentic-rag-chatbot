@@ -11,6 +11,7 @@ dependencies = [
   "fastapi[standard]",
   "uvicorn",
   "langchain",
+  "langchain-community",
   "langchain-openai",
   "langchain-chroma",
   "langgraph",
