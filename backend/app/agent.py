@@ -5,13 +5,14 @@ import json
 import re
 import uuid
 from collections.abc import Generator
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
+from pydantic import SecretStr
 
 from app.config import settings
 from app.ingestion import get_retriever
@@ -30,7 +31,7 @@ class AgentState(TypedDict):
 
 llm = ChatOpenAI(
     model=settings.llm_model,
-    api_key=settings.openrouter_api_key,
+    api_key=SecretStr(settings.openrouter_api_key) if settings.openrouter_api_key else None,
     base_url=settings.openrouter_base_url,
     temperature=0,
 )
@@ -126,29 +127,23 @@ def grade_documents(state: AgentState) -> AgentState:
     chain = BATCH_GRADER_PROMPT | llm | StrOutputParser()
 
     doc_strings = [
-        f"Document {i+1}:\n{doc.page_content}"
-        for i, doc in enumerate(state["documents"])
+        f"Document {i + 1}:\n{doc.page_content}" for i, doc in enumerate(state["documents"])
     ]
     formatted_docs = "\n\n".join(doc_strings)
 
-    result = chain.invoke(
-        {"question": state["query"], "documents": formatted_docs}
-    )
+    result = chain.invoke({"question": state["query"], "documents": formatted_docs})
 
     # Parse results
     clean_result = result.strip().lower()
     relevant_indices = set()
 
     if "none" not in clean_result:
-        for num in re.findall(r'\d+', clean_result):
+        for num in re.findall(r"\d+", clean_result):
             relevant_indices.add(int(num) - 1)
 
-    relevant_docs = [
-        doc for i, doc in enumerate(state["documents"]) if i in relevant_indices
-    ]
+    relevant_docs = [doc for i, doc in enumerate(state["documents"]) if i in relevant_indices]
 
-    log.info("grading_complete", relevant=len(
-        relevant_docs), total=len(state["documents"]))
+    log.info("grading_complete", relevant=len(relevant_docs), total=len(state["documents"]))
     return {**state, "documents": relevant_docs}
 
 
@@ -229,7 +224,7 @@ def generate(state: AgentState) -> AgentState:
     return {**state, "generation": result}
 
 
-def build_graph() -> StateGraph:
+def build_graph() -> Any:
     graph = StateGraph(AgentState)
 
     graph.add_node("router", router)
@@ -242,9 +237,7 @@ def build_graph() -> StateGraph:
     graph.set_entry_point("router")
 
     graph.add_conditional_edges(
-        "router",
-        lambda state: state["route"],
-        {"search": "retrieve", "chat": "casual_chat"}
+        "router", lambda state: state["route"], {"search": "retrieve", "chat": "casual_chat"}
     )
 
     graph.add_edge("casual_chat", END)
@@ -274,7 +267,7 @@ NODE_STATUS_LABELS: dict[str, str] = {
 }
 
 
-def _sse_event(data: dict) -> str:
+def _sse_event(data: dict[str, Any]) -> str:
     return f"data: {json.dumps(data)}\n\n"
 
 
@@ -287,23 +280,26 @@ def stream_agent(query: str, conversation_id: str | None = None) -> Generator[st
         "documents": [],
         "generation": "",
         "query_rewritten": False,
+        "route": "search",
     }
 
     result: AgentState | None = None
     for event in rag_agent.stream(initial_state):
         for node_name, node_output in event.items():
-            result = node_output
+            result = cast(AgentState, node_output)
             label = NODE_STATUS_LABELS.get(node_name)
             if label:
                 yield _sse_event({"type": "status", "message": label})
 
     if result is None:
-        yield _sse_event({
-            "type": "answer",
-            "answer": "Something went wrong — no result from the agent.",
-            "sources": [],
-            "conversation_id": conv_id,
-        })
+        yield _sse_event(
+            {
+                "type": "answer",
+                "answer": "Something went wrong — no result from the agent.",
+                "sources": [],
+                "conversation_id": conv_id,
+            }
+        )
         return
 
     sources = [
@@ -319,10 +315,12 @@ def stream_agent(query: str, conversation_id: str | None = None) -> Generator[st
 
     log.info("agent_stream_complete", conversation_id=conv_id, num_sources=len(sources))
 
-    yield _sse_event({
-        "type": "answer",
-        "answer": result.get("generation", ""),
-        "sources": sources,
-        "conversation_id": conv_id,
-        "rewritten_query": result.get("query") if result.get("query_rewritten") else None,
-    })
+    yield _sse_event(
+        {
+            "type": "answer",
+            "answer": result.get("generation", ""),
+            "sources": sources,
+            "conversation_id": conv_id,
+            "rewritten_query": result.get("query") if result.get("query_rewritten") else None,
+        }
+    )

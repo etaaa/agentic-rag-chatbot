@@ -91,13 +91,13 @@ cd backend
 
 Create a virtual environment:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
 Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 Configure Environment:
@@ -121,6 +121,24 @@ Run the API:
 uvicorn app.main:app --reload
 ```
 *Watch the logs: "auto_indexing_started" will verify the process has begun.*
+
+### Backend Quality Tooling
+
+The backend uses `pyproject.toml` as the single source of truth for dependencies and tooling.
+
+Run the quality checks from `backend/`:
+```bash
+ruff check app tests
+ruff format --check app tests
+mypy app
+pytest
+```
+
+Enable pre-commit hooks from the repository root:
+```bash
+pre-commit install
+pre-commit run --all-files
+```
 
 ### 2. Frontend Setup
 

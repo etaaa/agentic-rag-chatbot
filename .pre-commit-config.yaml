@@ -1,0 +1,41 @@
+minimum_pre_commit_version: "3.7.0"
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        files: ^(\.github/workflows/.*\.ya?ml|\.pre-commit-config\.yaml)$
+      - id: check-toml
+        files: ^backend/pyproject\.toml$
+      - id: check-merge-conflict
+        files: ^(backend/|\.github/workflows/|README\.md|\.gitignore|\.pre-commit-config\.yaml)$
+        exclude: ^backend/generate_graph\.py$
+      - id: end-of-file-fixer
+        files: ^(backend/|\.github/workflows/|README\.md|\.gitignore|\.pre-commit-config\.yaml)$
+        exclude: ^backend/generate_graph\.py$
+      - id: trailing-whitespace
+        files: ^(backend/|\.github/workflows/|README\.md|\.gitignore|\.pre-commit-config\.yaml)$
+        exclude: ^backend/generate_graph\.py$
+
+  - repo: local
+    hooks:
+      - id: backend-ruff-check
+        name: backend ruff check
+        entry: bash -c 'cd backend && ruff check app tests'
+        language: system
+        pass_filenames: false
+        files: ^backend/(app/|tests/)
+
+      - id: backend-ruff-format
+        name: backend ruff format
+        entry: bash -c 'cd backend && ruff format --check app tests'
+        language: system
+        pass_filenames: false
+        files: ^backend/(app/|tests/)
+
+      - id: backend-mypy
+        name: backend mypy
+        entry: bash -c 'cd backend && mypy app'
+        language: system
+        pass_filenames: false
+        files: ^backend/app/

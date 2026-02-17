@@ -6,10 +6,11 @@ from pathlib import Path
 import fitz
 from langchain_chroma import Chroma
 from langchain_community.retrievers import BM25Retriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_openai import OpenAIEmbeddings
+from pydantic import SecretStr
 
 from app.config import settings
 from app.log import get_logger
@@ -24,15 +25,15 @@ def _table_to_markdown(table: list[list[str | None]]) -> str:
     if not table or not table[0]:
         return ""
 
-    rows = []
+    rows: list[list[str]] = []
     for row in table:
         rows.append([cell.replace("\n", " ").strip() if cell else "" for cell in row])
 
     header = "| " + " | ".join(rows[0]) + " |"
     separator = "| " + " | ".join("---" for _ in rows[0]) + " |"
     body_lines = []
-    for row in rows[1:]:
-        body_lines.append("| " + " | ".join(row) + " |")
+    for row_cells in rows[1:]:
+        body_lines.append("| " + " | ".join(row_cells) + " |")
 
     return "\n".join([header, separator] + body_lines)
 
@@ -96,7 +97,7 @@ def extract_chunks_from_pdf(pdf_path: str) -> list[Document]:
 def get_embeddings() -> OpenAIEmbeddings:
     return OpenAIEmbeddings(
         model=settings.embedding_model,
-        openai_api_key=settings.openrouter_api_key,
+        api_key=SecretStr(settings.openrouter_api_key) if settings.openrouter_api_key else None,
         base_url=settings.openrouter_base_url,
     )
 
@@ -165,8 +166,7 @@ class HybridRetriever(BaseRetriever):
 
 def _build_retriever() -> BaseRetriever:
     vectorstore = get_vectorstore()
-    vector_retriever = vectorstore.as_retriever(
-        search_kwargs={"k": settings.retrieval_k})
+    vector_retriever = vectorstore.as_retriever(search_kwargs={"k": settings.retrieval_k})
 
     if not vectorstore._collection.count():
         return vector_retriever
@@ -200,4 +200,5 @@ def get_retriever() -> BaseRetriever:
     global _retriever
     if _retriever is None:
         init_retriever()
+    assert _retriever is not None
     return _retriever
