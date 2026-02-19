@@ -82,22 +82,13 @@ This is a prototype, I focused on the core retrieval loop first. Here's what I c
 *   Node.js 18+
 *   An API Key for OpenRouter (or OpenAI)
 
-### 1. Backend Setup
+### Quick Start (Makefile)
 
-Move to the backend directory:
-```bash
-cd backend
-```
+A `Makefile` is provided for common tasks. Run `make help` to see all available targets.
 
-Create a virtual environment:
+Install all dependencies (backend + frontend):
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-Install dependencies:
-```bash
-pip install -e ".[dev]"
+make install
 ```
 
 Configure Environment:
@@ -115,23 +106,28 @@ LOG_LEVEL=INFO
 The system is designed to **automatically index** the PDF on the first run if the vector database (`data/chroma`) is missing.
 *Ensure `data/product_catalog_01.pdf` exists in the project root.*
 
-Run the API:
+Run both servers concurrently:
 ```bash
-# From the backend directory
-uvicorn app.main:app --reload
+make dev
 ```
-*Watch the logs: "auto_indexing_started" will verify the process has begun.*
 
-### Backend Quality Tooling
+Or start them individually:
+```bash
+make backend   # uvicorn on :8000
+make frontend  # next dev on :3000
+```
+
+Open [http://localhost:3000](http://localhost:3000) to start chatting.
+
+### Quality Tooling
 
 The backend uses `pyproject.toml` as the single source of truth for dependencies and tooling.
 
-Run the quality checks from `backend/`:
 ```bash
-ruff check app tests
-ruff format --check app tests
-mypy app
-pytest
+make lint        # ruff check + eslint
+make format      # ruff format --check
+make test        # pytest
+make typecheck   # mypy
 ```
 
 Enable pre-commit hooks from the repository root:
@@ -139,22 +135,3 @@ Enable pre-commit hooks from the repository root:
 pre-commit install
 pre-commit run --all-files
 ```
-
-### 2. Frontend Setup
-
-Open a new terminal and move to the frontend directory:
-```bash
-cd frontend
-```
-
-Install dependencies:
-```bash
-npm install
-```
-
-Run the development server:
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to start chatting.
